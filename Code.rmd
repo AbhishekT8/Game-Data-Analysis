@@ -1,0 +1,277 @@
+---
+title: "IE5374-Sec03-Group5"
+author: "Abhishek Taware"
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Task 1: Data Wrangling
+
+## Preparing the data
+```{r Loading Libraries, message=FALSE, warning=FALSE}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(lubridate)
+library(stringr)
+library(treemapify)
+library(ggthemes)
+library(tidyverse)
+library(ggalluvial)
+```
+
+
+```{r Loading Dataset}
+Games <- read.csv("C:\\Video_Games.csv", na.strings="")
+```
+
+## Discovering the Data
+```{r}
+#Checking the dimensions of the dataframe
+head(Games,5)
+dim(Games)
+colnames(Games)
+sum(Games[is.null(Games)])
+colSums(is.na(Games))
+#Checking distinct values
+Games %>% summarise_all(n_distinct)
+```
+
+## Cleaning the Data
+```{r Cleaning the data}
+#Since there are 2 NA Values in the Names column, it is better to drop those 2 rows as they won't have the unique identifier of the game and will be treated as a blank rows
+
+#Dropping the rows containing NA Values in the Names column
+Cleaned_Games <- Games[!(is.na(Games$Name)| Games$Name==""),]
+
+#Dropping the rows for the years 2016, 2017 as the row count is low.
+Year <- Cleaned_Games %>% group_by(Year_of_Release) %>% summarize(Count = n()) %>% arrange(Count)
+
+Cleaned_Games <- Cleaned_Games %>% filter(Year_of_Release != "2017" & Year_of_Release != "2020" & Year_of_Release != "1980")
+```
+
+## Enriching the Data
+```{r, message=FALSE, warning=FALSE}
+Cleaned_Games[Cleaned_Games == "N/A"] <- NA
+
+Cleaned_Games$Year_of_Release <- as.numeric(as.character(Cleaned_Games$Year_of_Release))
+
+Cleaned_Games$Critic_Score <- as.numeric(as.character(Cleaned_Games$Critic_Score))
+
+#To bring uniformity to critic score
+Cleaned_Games$User_Score <- as.numeric(as.character(Cleaned_Games$User_Score))* 10
+
+write.csv(Cleaned_Games,"D:\\Datasets\\Cleaned_Games.csv")
+
+# The reason we are not replacing NA values with another value is because of the inconsistency it might create in the data frame wrt different column types as if we replace an NA value with something like "Unspecified", it might create an inconsistency in the columns containing integer values. To overcome this, we would rather prefer dropping the count of NA values after we have processed the data.
+
+Cleaned_Games <- read.csv("D:\\Datasets\\Cleaned_Games.csv")
+```
+
+# Task 2: Asking Business Questions
+
+
+## Q1. How many games were launched each year during the last 20 years?
+```{r Number of launches over the years, message=FALSE, warning=FALSE}
+Yearly_Releases <- Cleaned_Games %>% group_by(Year_of_Release) %>% summarize(Count = n()) %>% drop_na() %>% arrange(desc(Year_of_Release)) %>% slice(1:20)
+
+ggplot(data = Yearly_Releases, mapping = aes(x=Year_of_Release, y=Count)) +
+  geom_bar(stat="identity", position = "dodge", fill = "#FF6666") +
+  geom_text(aes(label = Count), hjust = -0.1, size = 3, position = position_dodge(0.9)) + 
+  ggtitle("Number of launches in the past 20 Years") + coord_flip() + 
+  labs(y="Number of Games Launched", x = "Year")
+```
+
+## Conclusion
+Using Bar Chart that is generated, we are able to see the trend which showcases that between 2007 and 2011 we have seen a sharp rise in the increase of launches in new games whereas before and after that the number of releases made has remained stagnant or have declined compared to the peak years.
+
+## Q2. Which were the years that saw most number of releases?
+```{r Top 5 Years with the most number of launches, message=FALSE, warning=FALSE}
+Top_5_Years <- Cleaned_Games %>% group_by(Year_of_Release) %>% summarize(Count = n()) %>% drop_na() %>% arrange(desc(Count)) %>% slice(1:5) %>% arrange(Year_of_Release)
+
+ggplot(data = Top_5_Years, mapping = aes(x=Year_of_Release, y=Count)) +
+  geom_bar(stat="identity", position = "dodge", fill = "#FF6666") +
+  geom_text(aes(label = Count), vjust = -0.5, size = 3, position = position_dodge(0.9)) + 
+  ggtitle("Years with the most number of launches") + 
+  labs(y="Year", x = "Number of Releases")
+```
+
+## Conclusion
+As we can see above, most number of releases have been linearly between 2007 and 2011. As per our reading, this was the period of time that saw most number of consoles being released and the industry boomed also as the 90s kids started turning teenagers.
+
+## Q3. Which genres have people preferred over the past 20 years?
+```{r Heatmap Corressponding to Year of Release and Genre, message=FALSE, warning=FALSE}
+Heatmap <- Cleaned_Games %>% na.omit() %>% 
+  group_by(Year_of_Release, Genre) %>%
+  summarise(No.of.Releases = n()) %>% na.omit() %>% filter(Year_of_Release %in% 1997:2016)
+
+ggplot(Heatmap, aes(x = as.factor(Year_of_Release), y = Genre, fill = No.of.Releases)) +
+  geom_tile() + scale_x_discrete(guide = guide_axis(n.dodge=3)) + 
+  labs(x = "Year", y = "Genre") +
+  scale_fill_distiller(palette = "Spectral") + ggtitle("Transition of Genres") + 
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+## Conclusion
+From the heatmap that we have generated above, we can see that during the end of 1990s, genres such as puzzles, sports, strategy games did not exist at all. As the years go by, we can see that during mid 2000s, there were a large number of Action Sequenced Games being launched and off late, they have remained popular along with genres such as Racing, Sports, Adventure etc.
+
+## Q4. Which are the Top 10 most popular genres that have released?
+```{r Treemap of the most popular Genres, message=FALSE, warning=FALSE}
+Tree <- Cleaned_Games %>% group_by(Genre) %>% summarize(No.of.Releases = n()) %>% arrange(desc(No.of.Releases)) %>% drop_na()
+ggplot(Tree, aes(area = No.of.Releases, fill = Genre, label = Genre)) +
+  geom_treemap() + ggtitle("Top 10 Genres") +
+           geom_treemap_text(fontface = "italic", colour = "white", place = "centre", grow = FALSE) +   theme(plot.title = element_text(hjust = 0.5))
+```
+
+## Conclusion
+As we can see, Action Genre is clearly the most popular genre among the genres of video games that have released. It outperforms the second most popular genre i.e Sports by ~43%. Apart from these 2 genres, Role Playing Games and First Person Shooter games have been popular as well.
+
+## Q5. What have been the trends of the number of Games launched by the Top 5 publishers?
+```{r Top 5 Publishers with most releases in the last 20 Years, message=FALSE, warning=FALSE}
+Publisher_Releases <- Cleaned_Games %>% filter(Year_of_Release %in% 1997:2016) %>% group_by(Publisher) %>% summarize(Count = n()) %>% drop_na() %>% arrange(desc(Count))
+
+# Filtering & Grouping records based on Top 5 Crimes
+
+Publishers <- Cleaned_Games %>% filter(Year_of_Release %in% 1997:2016) %>% group_by(Publisher, Year_of_Release) %>%
+  filter(Publisher %in% Publisher_Releases$Publisher[1:5]) %>% 
+  summarize(Count = n()) %>% arrange(desc(Publisher)) %>% drop_na()
+
+# Plotting the line graph to showcase the trends of Top 5 Publishers over the years
+ggplot(data = Publishers, aes(x=Year_of_Release, y=Count, colour = Publisher, group = Publisher)) + geom_line() + ggtitle("Top 5 Publishers over the years") + 
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+## Conclusion
+Based on the multiple line chart that has been drawn, Electronic Arts has launched the most number of games every year up till 2008 after which it has been overtaken by different publishers at different Points of time with Namco Bandai having launched almost twice the number of games (50) as its next competitors ( EA and Ubisoft) who launched 27 games each in 2016.
+
+## Q6. Which are the most popular consoles that the publishers prefer to launch their games on?
+```{r Top 5 Most Popular Consoles, message=FALSE, warning=FALSE}
+# length(unique(Cleaned_Games$Platform))
+
+freq_platform <- data.frame(cbind(Frequency = table(Cleaned_Games$Platform), Percent = prop.table(table(Cleaned_Games$Platform)) * 100))
+freq_platform <- head(freq_platform[order(freq_platform$Frequency, decreasing = T), ], 5)
+
+freq_platform$Percent <- round(freq_platform$Percent,2)
+
+freq_platform <- freq_platform %>% 
+  mutate(csum = rev(cumsum(rev(Percent))), 
+         pos = Percent/2 + lead(csum, 1),
+         pos = if_else(is.na(pos), Percent/2, pos))
+
+
+ggplot(freq_platform, aes(x = "", y = Percent, fill = fct_inorder(row.names(freq_platform)))) +
+  geom_col(width = 1, color = 1) +
+  geom_text(aes(label = Percent),
+            position = position_stack(vjust = 0.5)) +
+  coord_polar(theta = "y") +
+  guides(fill = guide_legend(title = "Group")) +
+  scale_y_continuous(breaks = freq_platform$pos, labels = row.names(freq_platform)) +
+  theme(axis.ticks = element_blank(),
+        axis.title = element_blank(),
+        axis.text = element_text(size = 13), 
+        legend.position = "none", # Removes the legend
+        panel.background = element_rect(fill = "white"), plot.title = element_text(hjust = 0.8)) + ggtitle("Top 5 popular consoles for Game Launches")
+```
+
+## Conclusion
+Based on the data available, the PS2 has been the most popular Platform to launch a game on which is closely followed by Nintendo DS. Thanks to their release in the early 2000s both of these platforms were popular as the 90s kids started growing up till the time both of these platforms reached their end of life support.
+
+## Q7. How did the Users rate different genres in the last 5 years compared to the critics
+```{r Average User Score vs Critic Score for popular genres in the last 5 Years, message=FALSE, warning=FALSE}
+Scores <- Cleaned_Games %>% filter(Year_of_Release %in% 2012:2016) %>%  subset(select = c("Genre", "User_Score", "Critic_Score")) %>% group_by(Genre) %>% summarize(Avg.User.Score = round(mean(User_Score, na.rm=TRUE),2), Avg.Critic.Score = round(mean(Critic_Score, na.rm = TRUE),2)) %>% pivot_longer(c(2,3), names_to = "Score_Type", values_to = "Score") %>% group_by(Genre)
+
+ggplot(Scores, aes(fill=Score_Type, y=Score, x=Genre)) + 
+    geom_bar(position="dodge", stat="identity") + scale_x_discrete(guide = guide_axis(n.dodge=3)) + geom_text(aes(label = round(Score)), vjust = -0.5, hjust = 0.5, size = 3, position = position_dodge(0.9)) + ggtitle("Critic Score vs User Score") + theme(plot.title = element_text(hjust = 0.5))
+```
+
+## Conclusion
+As we can from the chart, there is a major difference of opinion between how critics rate games of First Person Shooter, Sports, Racing, and Strategy compared to the regular players of the game. On the other hand, rest of the genres saw just a minor difference between the ratings given by critics compared to the ratings given by the regular players.
+
+## Q8. Which geographies contributed how much to the Publishers' Monetary Sales?
+```{r Sales Division of Top Publishers, message=FALSE, warning=FALSE}
+Top_Global <- Cleaned_Games %>% subset(select = c(Publisher, Global_Sales)) %>% group_by(Publisher) %>% 
+  summarize(Total_Sales = sum(Global_Sales, na.rm = TRUE)) %>% arrange(desc(Total_Sales)) %>% slice(1:5)
+
+Top <- Cleaned_Games%>% subset(select = c(Publisher, NA_Sales, EU_Sales, JP_Sales, Other_Sales)) %>% filter(Publisher %in% Top_Global$Publisher) %>% 
+  group_by(Publisher) %>% summarize(NA_Sales = sum(NA_Sales, na.rm=TRUE), EU_Sales = sum(EU_Sales, na.rm = TRUE), JP_Sales = sum(JP_Sales, na.rm = TRUE), Other_Sales = sum(Other_Sales, na.rm = TRUE))  %>% pivot_longer(c(2:5), names_to = "Geography", values_to = "Sales") %>% group_by(Publisher)
+
+Top[Top == "Sony Computer Entertainment"] <- "Sony"
+
+Top$Publisher <- as.factor(Top$Publisher)
+Top$Geography <- as.factor(Top$Geography)
+
+ggplot(Top, aes(x="", y = Sales, group = Geography, colour = Geography, fill = Geography)) + geom_bar(width = 1, stat = "identity",position = position_fill() ) + coord_polar("y", start = 0) + theme_void() + facet_grid(.~Publisher) + ggtitle("Geographic Sales of Top Publishers") + 
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+## Conclusion
+As we can see, Activision, EA, Nintendo, Sony and Ubisoft financially have been the most successful publishers of games. Most of the money all the publishers make comes from North America which is followed by the European Union for most of the publishers (except Nintendo who's second biggest market is it's home market of Japan)
+
+## Q9. Which games have released on most number of platforms
+```{r Games that have released on most number of platforms, message=FALSE, warning=FALSE}
+freq_name <- data.frame(cbind(Frequency = table(Cleaned_Games$Name), Percent = prop.table(table(Cleaned_Games$Name)) * 100))
+freq_name <- head(freq_name[order(freq_name$Frequency, decreasing = T), ], 5)
+
+ggplot(data = freq_name, mapping = aes(x = row.names(freq_name), y = Frequency)) +
+  geom_segment(aes(xend=row.names(freq_name), yend=0, color = row.names(freq_name)), size = 2.5, alpha = .5) +
+  geom_point(mapping = aes(fill = row.names(freq_name)), size = 5, shape = 21) + 
+  theme_economist() + 
+  coord_flip() + theme(legend.position = 'none') + xlab("") + ylab("") + ggtitle("Games launched on most number of platforms") + theme(plot.title = element_text(hjust = 3))
+```
+
+## Conclusion
+As we can see, NFS Most Wanted has released on most number of platforms (released on 12 platforms) followed by Ratatouille, Madden NFL 07, LEGO Marvel Super Heroes, FIFA 14 all of which have released on 9 platforms.
+
+## Q10. Which Developers do the top publishers prefer to work with?
+```{r Top Developers preferred by Publishers, message=FALSE, warning=FALSE}
+Preference1 <- Cleaned_Games %>% group_by(Publisher) %>% summarize(Count = n()) %>% arrange(desc(Count)) %>% drop_na() %>% slice(1:5)
+
+Preference2 <- Cleaned_Games %>% group_by(Developer) %>% summarize(Count = n()) %>% arrange(desc(Count)) %>% drop_na() %>% slice(1:10)
+
+Code_switch <- Cleaned_Games %>% group_by(Publisher, Developer) %>% filter((Publisher %in% Preference1$Publisher) & (Developer %in% Preference2$Developer)) %>% summarize(Count = n()) %>% arrange(desc(Count)) %>% drop_na()
+
+
+# How many publishers Activision has worked with
+Act <- Cleaned_Games %>% filter(Publisher == "Activision")
+length(unique(Act$Developer))
+
+ggplot(data = Code_switch,
+       aes(axis1 = Publisher, axis2 = Developer, y = Count)) +
+  geom_alluvium(aes(fill = Count)) +
+  geom_stratum() +
+  geom_text(stat = "stratum",
+            aes(label = after_stat(stratum))) +
+  scale_x_discrete(limits = c("Publisher", "Developer"),
+                   expand = c(0.15, 0.05)) +
+  theme_void()
+```
+
+## Conclusion
+Based on the alluvial chart that is generated, we can see that companies such as EA and Ubisoft also act as Developers for their games. On the other hand Konami along with developing some of the games, also outsources them and Namco Bandai Games outsources their games to Capcom, Omega Force. Also an interesting observation over here is that Activision does not appear on the list as it has published games from Over 150 different developers.
+
+## Q11. Which were the most Popular Consoles every year? 
+```{r Most Popular Consoles for releases every Year, message=FALSE, warning=FALSE}
+Consoles <- Cleaned_Games %>% filter(Year_of_Release %in% 1997:2016) %>% group_by(Year_of_Release, Platform) %>% summarize(Count = n()) %>% arrange(Year_of_Release, desc(Count))
+
+
+Consoles <- Consoles[!duplicated(Consoles$Year_of_Release),]
+
+ggplot(Consoles, aes(x=Year_of_Release, y=Count, fill = Platform)) + geom_bar(stat="identity", position = "dodge") + 
+  geom_text(label=c(Consoles$Platform), vjust = -0.2, size = 2.5) + labs(y="Year", x = "Number of Games Released") + ggtitle("Most popular platforms every year") + theme(plot.title = element_text(hjust = 0.5))
+```
+
+## Conclusion
+As we can see, clearly Sony's Play Station Gaming Consoles have topped the charts of being the most popular consoles for Game Publishers every year except between 2007 - 2010 when Nintendo's DS dominated the charts wherein it clearly outperformed Sony's Consoles mainly due to the portability of the DS Console and thanks to the craze of mobile gaming which started due to the arrival of the touch screen iPhone.
+
+# Sources
+Dataset: https://www.kaggle.com/rishidamarla/video-game-sales
+
+Reference for Nintendo DS: https://en.wikipedia.org/wiki/Nintendo_DS#Legacy
+
+Reference for PS2's Success: https://www.gamesindustry.biz/articles/2020-01-06-how-sonys-playstation-2-took-the-world-by-storm
